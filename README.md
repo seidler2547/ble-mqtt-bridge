@@ -19,3 +19,48 @@ Run as
 ```
 source /opt/ble-mqtt/bin/activate ; /opt/ble-mqtt/watcher.py
 ```
+
+## Example configuration
+### IPV 877710 Cccool Chain Control Bluetooth sensor
+```
+sensor:
+  - platform: mqtt
+    state_topic: "ble/88:4a:ea:bb:bb:bb/advertisement/ff"
+    name: 'Sensor 1'
+    unit_of_measurement: '°C'
+    value_template: >-
+      {% if value[0:2]|int(base=16) is lessthan(128) %}
+      {{ value[0:2]|int(base=16)|float + value[2:4]|int(base=16)|float/256 }}
+      {% else %}
+      {{ value[0:2]|int(base=16)|float + value[2:4]|int(base=16)|float/256 - 256.0 }}
+      {% endif %}
+```
+
+### April Brother ABTemp Temperature BLE Sensor Beacon
+```
+sensor:
+  - platform: mqtt
+    state_topic: "ble/12:3b:6a:cc:cc:cc/advertisement/ff"
+    name: 'Beacon SZ'
+    unit_of_measurement: '°C'
+    value_template: >-
+      {% if value[0:2] == '4c' %}
+      {{ value[46:48]|int(base=16)|float }}
+      {% else %}
+      {{ states.sensor.beacon_sz.state }}
+      {% endif %}
+```
+### April Brother Smart BLE Accelerometer iBeacon Beacon Sensor
+```
+sensor:
+- platform: mqtt
+    state_topic: "ble/12:3b:6a:dd:dd:dd/advertisement/ff"
+    name: 'Blue Beacon'
+    unit_of_measurement: '°C'
+    value_template: >-
+      {% if value[0:2] == 'd2' %}
+      {{ value[18:20]|int(base=16)|float }}
+      {% else %}
+      {{ states.sensor.blue_beacon.state }}
+      {% endif %}
+```
