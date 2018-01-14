@@ -3,6 +3,8 @@ A Python Bluetooth LE to MQTT bridge
 
 Should be run as root or as user with appropriate permissions to start BT LE scans.
 
+__Last time I tried, the MQTT server built into HA did not support the MQTT protocol fully. So use Mosquitto or another full-featured MQTT server instead!__
+
 Needs `paho.mqtt.client` and `bluepy`.
 
 ## Run the bridge
