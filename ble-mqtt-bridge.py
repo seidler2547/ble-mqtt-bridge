@@ -97,6 +97,13 @@ class BLEConnection():
                     handle = None
                     if 'handle' in command:
                         handle = int(command['handle'])
+                    uuid = None
+                    if 'uuid' in command:
+                        uuid = command['uuid']
+
+                    ignoreError = None
+                    if 'ignoreError' in command:
+                        ignoreError = 1
 
                     if 'value' in command:
                         value = command['value']
@@ -105,15 +112,28 @@ class BLEConnection():
                         elif type(value) is list:
                             value = bytes(value)
 
-                    if  action == 'writeCharacteristic':
-                        if handle is not None:
-                            print("    Write {} to {}".format(value, handle))
-                            p.writeCharacteristic(handle, value, True)
-                    elif action == 'readCharacteristic':
-                        if handle is not None:
-                            result = p.readCharacteristic(handle)
-                            print("    Read {} from {}".format(str(result), handle))
-                            client.publish('ble/{}/data/{:02x}'.format(self._mac, handle), json.dumps([ int(x) for x in result ]))
+                    try:
+                        if  action == 'writeCharacteristic':
+                            if handle is not None:
+                                print("    Write {} to {:02x}".format(value, handle))
+                                p.writeCharacteristic(handle, value, True)
+                            elif uuid is not None:
+                                for c in p.getCharacteristics(uuid=uuid):
+                                    print("    Write {} to {}".format(value, uuid))
+                                    c.write(value, True)
+                        elif action == 'readCharacteristic':
+                            if handle is not None:
+                                result = p.readCharacteristic(handle)
+                                print("    Read {} from {}".format(str(result), handle))
+                                client.publish('ble/{}/data/{:02x}'.format(self._mac, handle), json.dumps([ int(x) for x in result ]))
+                            elif uuid is not None:
+                                for c in p.getCharacteristics(uuid=uuid):
+                                    result = c.read()
+                                    print("    Read {} from {}".format(str(result), uuid))
+                                    client.publish('ble/{}/data/{}'.format(self._mac, uuid), json.dumps([ int(x) for x in result ]))
+                    except Exception as e:
+                        if not ignoreError:
+                            raise e
             p.disconnect()
 
 bt_thread_pool = ThreadPoolExecutor(max_workers=2)
