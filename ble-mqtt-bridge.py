@@ -23,6 +23,8 @@ SCAN_INITIAL = bool(config.get("scan", {}).get("initial", True))
 SCAN_LOOP = bool(config.get("scan", {}).get("loop", False))
 SCAN_TIMEOUT = int(config.get("scan", {}).get("timeout", 5))
 
+KNOWN_DEVICES = config.get("knownDevices", [])
+
 client = mqtt.Client()
 # Check if MQTT user and/or password are specified
 if len(MQTT_USER) > 0 or len(MQTT_PASSWORD) > 0:
@@ -93,6 +95,12 @@ ble_dev_map = {}
 class BLEConnection():
     def __init__(self, mac):
         self._mac = mac
+        self._deviceInfo = None
+        for device in KNOWN_DEVICES:
+            if mac == device['name']:
+                self._mac = device['mac']
+                self._deviceInfo = device
+        self._name = self._deviceInfo.get('name', mac) if self._deviceInfo is not None else mac
         self.connected = False
 
     def process_commands(self, command_list):
