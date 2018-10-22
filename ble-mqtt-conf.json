@@ -1,0 +1,13 @@
+{
+    "mqtt": {
+        "host": "localhost",
+        "port": "1883",
+        "user": "",
+        "password": ""
+    },
+    "scan": {
+        "initial": false,
+        "loop": false,
+        "timeout": 5
+    }
+}

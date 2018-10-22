@@ -11,7 +11,22 @@ from concurrent.futures import ThreadPoolExecutor
 from time import sleep
 from bluepy.btle import Scanner, DefaultDelegate, Peripheral
 
+with open('ble-mqtt-conf.json', 'r') as f:
+    config = json.load(f)
+
+MQTT_HOST = config.get("mqtt", {}).get("host", "localhost")
+MQTT_PORT = int(config.get("mqtt", {}).get("port", 1883))
+MQTT_USER = config.get("mqtt", {}).get("user", "")
+MQTT_PASSWORD = config.get("mqtt", {}).get("password", "")
+
+SCAN_INITIAL = bool(config.get("scan", {}).get("initial", True))
+SCAN_LOOP = bool(config.get("scan", {}).get("loop", False))
+SCAN_TIMEOUT = int(config.get("scan", {}).get("timeout", 5))
+
 client = mqtt.Client()
+# Check if MQTT user and/or password are specified
+if len(MQTT_USER) > 0 or len(MQTT_PASSWORD) > 0:
+    client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
 
 class ScanDelegate(DefaultDelegate):
     ''' Publishes scan results to MQTT '''
@@ -183,11 +198,13 @@ class CommandThread(Thread):
                     for v in ble_dev_map.values():
                         v.release()
                 try:
+                    print("    stopping scan")
                     scanner.stop()
                 except:
                     pass
-                sleep(8)
-                client.publish(topic=msg.topic, payload=msg.payload, qos=msg.qos, retain=msg.retain)
+                if SCAN_LOOP:
+                    sleep(8)
+                    client.publish(topic=msg.topic, payload=msg.payload, qos=msg.qos, retain=msg.retain)
         elif len(topic) == 3 and topic[0] == 'ble' and topic[2] == 'commands':
             try:
                 data = json.loads(msg.payload.decode('utf-8'))
@@ -212,10 +229,11 @@ class CommandThread(Thread):
 #ScannerThread()
 CommandThread()
 
-client.connect("localhost")
-client.loop_start();
+client.connect(MQTT_HOST, MQTT_PORT)
+client.loop_start()
 sleep(1)
-client.publish('ble/scan/commands', 5)
+if SCAN_INITIAL:
+    client.publish('ble/scan/commands', SCAN_TIMEOUT)
 #client.loop_forever()
 
 while True:
