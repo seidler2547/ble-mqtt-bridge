@@ -97,7 +97,7 @@ class BLEConnection():
         self._mac = mac
         self._deviceInfo = None
         for device in KNOWN_DEVICES:
-            if mac == device['name']:
+            if mac.lower() == device['name'].lower():
                 self._mac = device['mac']
                 self._deviceInfo = device
         self._name = self._deviceInfo.get('name', mac) if self._deviceInfo is not None else mac
