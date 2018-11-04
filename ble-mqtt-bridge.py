@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from time import sleep
 from bluepy.btle import Scanner, DefaultDelegate, Peripheral
 
-with open('ble-mqtt-conf.json', 'r') as f:
+with open('config/ble-mqtt-conf.json', 'r') as f:
     config = json.load(f)
 
 MQTT_HOST = config.get("mqtt", {}).get("host", "localhost")
