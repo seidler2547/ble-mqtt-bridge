@@ -98,9 +98,9 @@ class BLEConnection():
         self._deviceInfo = None
         for device in KNOWN_DEVICES:
             if mac.lower() == device['name'].lower():
-                self._mac = device['mac']
+                self._mac = device['mac'].lower()
                 self._deviceInfo = device
-        self._name = self._deviceInfo.get('name', mac) if self._deviceInfo is not None else mac
+        self._name = self._deviceInfo.get('name', mac).lower() if self._deviceInfo is not None else mac.lower()
         self.connected = False
 
     def process_commands(self, command_list):
@@ -127,15 +127,23 @@ class BLEConnection():
                         characteristic = None
                         if 'characteristic' in command:
                             characteristic = command['characteristic']
+                        
+                        if ((uuid is not None or handle is not None) and characteristic is None):
+                            return_topic = "{:02x}".format(handle) if handle is not None else uuid
+                        else:
+                            return_topic = characteristic
 
-                        if characteristic is not None and self._deviceInfo['characteristics'] is not None:
+                        if self._deviceInfo['characteristics'] is not None:
                             for dev_char in self._deviceInfo['characteristics']:
-                                if characteristic == dev_char.get('name', None):
+                                if characteristic is not None and characteristic == dev_char.get('name', None):
                                     handle = int(dev_char.get('handle'), 0) if dev_char.get('handle', None) is not None else None 
                                     uuid = dev_char.get('uuid', None)
-
-                        if ((uuid is not None or handle is not None) and characteristic is None):
-                            characteristic = "{:02x}".format(handle) if handle is not None else uuid
+                                elif uuid is not None and uuid == dev_char.get('uuid', None):
+                                    handle = int(dev_char.get('handle'), 0) if dev_char.get('handle', None) is not None else None 
+                                    characteristic = dev_char.get('name', None)
+                                elif handle is not None and handle == dev_char.get('uuid', None):
+                                    uuid = dev_char.get('uuid', None)
+                                    characteristic = dev_char.get('name', None)
 
                         ignoreError = None
                         if 'ignoreError' in command:
@@ -160,13 +168,13 @@ class BLEConnection():
                             elif action == 'readCharacteristic':
                                 if handle is not None:
                                     result = p.readCharacteristic(handle)
-                                    print("    Read {} from {} ({:02x})".format(str(result), characteristic, handle))
-                                    client.publish('ble/{}/data/{}'.format(self._name, characteristic), json.dumps([ int(x) for x in result ]), retain=True)
+                                    print("    Read {} from {} ({:02x})".format(str(result), return_topic, handle))
+                                    client.publish('ble/{}/data/{}'.format(self._name, return_topic), json.dumps([ int(x) for x in result ]), retain=True)
                                 elif uuid is not None:
                                     for c in p.getCharacteristics(uuid=uuid):
                                         result = c.read()
-                                        print("    Read {} from {} ({})".format(str(result), characteristic, uuid))
-                                        client.publish('ble/{}/data/{}'.format(self._name, characteristic), json.dumps([ int(x) for x in result ]), retain=True)
+                                        print("    Read {} from {} ({})".format(str(result), return_topic, uuid))
+                                        client.publish('ble/{}/data/{}'.format(self._name, return_topic), json.dumps([ int(x) for x in result ]), retain=True)
                         except Exception as e:
                             if not ignoreError:
                                 raise e
