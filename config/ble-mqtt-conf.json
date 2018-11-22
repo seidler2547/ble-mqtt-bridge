@@ -1,0 +1,24 @@
+{
+    "mqtt": {
+        "host": "localhost",
+        "port": "1883",
+        "user": "",
+        "password": ""
+    },
+    "scan": {
+        "initial": false,
+        "loop": false,
+        "timeout": 5
+    },
+    "knownDevices": [
+        {
+            "mac": "11:11:11:22:22:22",
+            "name": "livingroom",
+            "characteristics": [
+                { "handle": "0x0048", "name": "pin" },
+                { "handle": "0x003d", "name": "temperature" },
+                { "uuid": "47e9ee2c-47e9-11e4-8939-164230d1df67", "name": "battery" }
+            ]
+        }
+    ]
+}

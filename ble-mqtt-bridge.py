@@ -11,7 +11,24 @@ from concurrent.futures import ThreadPoolExecutor
 from time import sleep
 from bluepy.btle import Scanner, DefaultDelegate, Peripheral
 
+with open('config/ble-mqtt-conf.json', 'r') as f:
+    config = json.load(f)
+
+MQTT_HOST = config.get("mqtt", {}).get("host", "localhost")
+MQTT_PORT = int(config.get("mqtt", {}).get("port", 1883))
+MQTT_USER = config.get("mqtt", {}).get("user", "")
+MQTT_PASSWORD = config.get("mqtt", {}).get("password", "")
+
+SCAN_INITIAL = bool(config.get("scan", {}).get("initial", True))
+SCAN_LOOP = bool(config.get("scan", {}).get("loop", False))
+SCAN_TIMEOUT = int(config.get("scan", {}).get("timeout", 5))
+
+KNOWN_DEVICES = config.get("knownDevices", [])
+
 client = mqtt.Client()
+# Check if MQTT user and/or password are specified
+if len(MQTT_USER) > 0 or len(MQTT_PASSWORD) > 0:
+    client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
 
 class ScanDelegate(DefaultDelegate):
     ''' Publishes scan results to MQTT '''
@@ -78,63 +95,95 @@ ble_dev_map = {}
 class BLEConnection():
     def __init__(self, mac):
         self._mac = mac
+        self._deviceInfo = None
+        for device in KNOWN_DEVICES:
+            if mac.lower() == device['name'].lower():
+                self._mac = device['mac'].lower()
+                self._deviceInfo = device
+        self._name = self._deviceInfo.get('name', mac).lower() if self._deviceInfo is not None else mac.lower()
         self.connected = False
 
     def process_commands(self, command_list):
-        print("Connecting to {}".format(self._mac))
-        skey = '{}_semaphore'.format(self._mac)
-        with ble_map_lock:
-            if skey not in ble_dev_map:
-                ble_dev_map[skey] = Semaphore()
-        with ble_dev_map[skey]:
-            p = Peripheral(self._mac)
-            print(" Connected to {}".format(self._mac))
-            for command in command_list:
-                print("  Command {}".format(command))
-                if 'action' in command:
-                    action = command['action']
+        try:
+            print("Connecting to {} ({})".format(self._name, self._mac))
+            skey = '{}_semaphore'.format(self._mac)
+            with ble_map_lock:
+                if skey not in ble_dev_map:
+                    ble_dev_map[skey] = Semaphore()
+            with ble_dev_map[skey]:
+                p = Peripheral(self._mac)
+                print("Connected to {} ({})".format(self._name, self._mac))
+                for command in command_list:
+                    print("  Command {}".format(command))
+                    if 'action' in command:
+                        action = command['action']
 
-                    handle = None
-                    if 'handle' in command:
-                        handle = int(command['handle'])
-                    uuid = None
-                    if 'uuid' in command:
-                        uuid = command['uuid']
+                        handle = None
+                        if 'handle' in command:
+                            handle = int(command['handle'], 0)
+                        uuid = None
+                        if 'uuid' in command:
+                            uuid = command['uuid']
+                        characteristic = None
+                        if 'characteristic' in command:
+                            characteristic = command['characteristic']
+                        
+                        if ((uuid is not None or handle is not None) and characteristic is None):
+                            return_topic = "{:02x}".format(handle) if handle is not None else uuid
+                        else:
+                            return_topic = characteristic
 
-                    ignoreError = None
-                    if 'ignoreError' in command:
-                        ignoreError = 1
+                        if self._deviceInfo['characteristics'] is not None:
+                            for dev_char in self._deviceInfo['characteristics']:
+                                if characteristic is not None and characteristic == dev_char.get('name', None):
+                                    handle = int(dev_char.get('handle'), 0) if dev_char.get('handle', None) is not None else None 
+                                    uuid = dev_char.get('uuid', None)
+                                elif uuid is not None and uuid == dev_char.get('uuid', None):
+                                    handle = int(dev_char.get('handle'), 0) if dev_char.get('handle', None) is not None else None 
+                                    characteristic = dev_char.get('name', None)
+                                elif handle is not None and handle == dev_char.get('uuid', None):
+                                    uuid = dev_char.get('uuid', None)
+                                    characteristic = dev_char.get('name', None)
 
-                    if 'value' in command:
-                        value = command['value']
-                        if type(value) is str:
-                            value = value.encode('utf-8')
-                        elif type(value) is list:
-                            value = bytes(value)
+                        ignoreError = None
+                        if 'ignoreError' in command:
+                            ignoreError = 1
 
-                    try:
-                        if  action == 'writeCharacteristic':
-                            if handle is not None:
-                                print("    Write {} to {:02x}".format(value, handle))
-                                p.writeCharacteristic(handle, value, True)
-                            elif uuid is not None:
-                                for c in p.getCharacteristics(uuid=uuid):
-                                    print("    Write {} to {}".format(value, uuid))
-                                    c.write(value, True)
-                        elif action == 'readCharacteristic':
-                            if handle is not None:
-                                result = p.readCharacteristic(handle)
-                                print("    Read {} from {}".format(str(result), handle))
-                                client.publish('ble/{}/data/{:02x}'.format(self._mac, handle), json.dumps([ int(x) for x in result ]))
-                            elif uuid is not None:
-                                for c in p.getCharacteristics(uuid=uuid):
-                                    result = c.read()
-                                    print("    Read {} from {}".format(str(result), uuid))
-                                    client.publish('ble/{}/data/{}'.format(self._mac, uuid), json.dumps([ int(x) for x in result ]))
-                    except Exception as e:
-                        if not ignoreError:
-                            raise e
-            p.disconnect()
+                        if 'value' in command:
+                            value = command['value']
+                            if type(value) is str:
+                                value = value.encode('utf-8')
+                            elif type(value) is list:
+                                value = bytes(value)
+
+                        try:
+                            if  action == 'writeCharacteristic':
+                                if handle is not None:
+                                    print("    Write {} to {:02x}".format(value, handle))
+                                    p.writeCharacteristic(handle, value, True)
+                                elif uuid is not None:
+                                    for c in p.getCharacteristics(uuid=uuid):
+                                        print("    Write {} to {}".format(value, uuid))
+                                        c.write(value, True)
+                            elif action == 'readCharacteristic':
+                                if handle is not None:
+                                    result = p.readCharacteristic(handle)
+                                    print("    Read {} from {} ({:02x})".format(str(result), return_topic, handle))
+                                    client.publish('ble/{}/data/{}'.format(self._name, return_topic), json.dumps([ int(x) for x in result ]), retain=True)
+                                elif uuid is not None:
+                                    for c in p.getCharacteristics(uuid=uuid):
+                                        result = c.read()
+                                        print("    Read {} from {} ({})".format(str(result), return_topic, uuid))
+                                        client.publish('ble/{}/data/{}'.format(self._name, return_topic), json.dumps([ int(x) for x in result ]), retain=True)
+                        except Exception as e:
+                            if not ignoreError:
+                                raise e
+                p.disconnect()
+                print("Disconnected from {} ({})".format(self._name, self._mac))
+        except Exception as e:
+            # report errors
+            client.publish('ble/scan/error', str(e))
+            sleep(1)
 
 bt_thread_pool = ThreadPoolExecutor(max_workers=2)
 
@@ -183,11 +232,13 @@ class CommandThread(Thread):
                     for v in ble_dev_map.values():
                         v.release()
                 try:
+                    print("    stopping scan")
                     scanner.stop()
                 except:
                     pass
-                sleep(8)
-                client.publish(topic=msg.topic, payload=msg.payload, qos=msg.qos, retain=msg.retain)
+                if SCAN_LOOP:
+                    sleep(8)
+                    client.publish(topic=msg.topic, payload=msg.payload, qos=msg.qos, retain=msg.retain)
         elif len(topic) == 3 and topic[0] == 'ble' and topic[2] == 'commands':
             try:
                 data = json.loads(msg.payload.decode('utf-8'))
@@ -212,10 +263,11 @@ class CommandThread(Thread):
 #ScannerThread()
 CommandThread()
 
-client.connect("localhost")
-client.loop_start();
+client.connect(MQTT_HOST, MQTT_PORT)
+client.loop_start()
 sleep(1)
-client.publish('ble/scan/commands', 5)
+if SCAN_INITIAL:
+    client.publish('ble/scan/commands', SCAN_TIMEOUT)
 #client.loop_forever()
 
 while True:
