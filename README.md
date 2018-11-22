@@ -22,9 +22,75 @@ Run as
 source /opt/ble-mqtt/bin/activate ; /opt/ble-mqtt/watcher.py
 ```
 
-## Example configuration
-### IPV 877710 Cccool Chain Control Bluetooth sensor
+## Use config file
+To allow for easy configuration, the bridge expects `./config/ble-mqtt-conf.json` to exist. Generally, the config can be split into 3 parts: `mqtt`, `scan` and `knownDevices`.
+
+
+`mqtt` contains broker related information (`host`, `port`, `user`, `password`). All values can be omitted for hard-coded default values. 
+
+`scan` controls BLE scanning. If both `initial` and `loop` are set to false, no BLE scanning will take place, thus not requiring root. `timeout` is configurable in seconds.
+
+`knownDevices` can be used to map BLE device ``MACs``, ``UUIDs`` and ``handles`` to human-readable names. If not set, the broker will simply not translate and use the values from MQTT. If a ``handle`` is defined for a characteristic (``UUID`` or ``name``), the broker will always use the given handle as it gives a much better performance.
+
+### Example config
+This example config contains the default values for `mqtt` and `scan`. 
+```json
+{
+    "mqtt": {
+        "host": "localhost",
+        "port": "1883",
+        "user": "",
+        "password": ""
+    },
+    "scan": {
+        "initial": true,
+        "loop": false,
+        "timeout": 5
+    },
+    "knownDevices": [
+        {
+            "mac": "11:11:11:11:11:11",
+            "name": "livingroom",
+            "characteristics": [
+                { "uuid": "47e9ee2b-47e9-11e4-8939-164230d1df67", "handle": "0x003d", "name": "temperature" },
+                { "uuid": "47e9ee30-47e9-11e4-8939-164230d1df67", "handle": "0x0048", "name": "pin" },
+            ]
+        },
+        {
+            "mac": "22:22:22:22:22:22",
+            "name": "bedroom",
+            "characteristics": [
+              ...
+            ]
+        }
+    ]
+}
 ```
+## Run in Docker
+To run the bridge in a Docker container, use the `Dockerfile` to build your own container, e.g. using:
+```docker
+docker build -t "ble-mqtt-bridge:rpi-latest" .
+```
+When running the container, some options need to be considered: 
+| Option | Description |
+|-|-|
+|`--net host` | allow bluetooth access on host|
+|`--privileged` | allow BLE scans (needs root) |
+|`-v /path/to/config/:/app/config/` | bind your local config file to the container |
+```docker
+docker run -dit \
+--net host \
+--name ble-mqtt-bridge \
+-v home/pi/ble-mqtt-bridge/config/:/app/config/ \
+ble-mqtt-bridge:rpi-latest
+```
+Build and run has been tested using a Raspberry Pi 3 B+ using Raspbian Strech Lite.
+
+
+
+## Example Home Assistant configuration
+### IPV 877710 Cccool Chain Control Bluetooth sensor
+```yaml
 sensor:
   - platform: mqtt
     state_topic: "ble/88:4a:ea:bb:bb:bb/advertisement/ff"
@@ -39,7 +105,7 @@ sensor:
 ```
 
 ### April Brother ABTemp Temperature BLE Sensor Beacon
-```
+```yaml
 sensor:
   - platform: mqtt
     state_topic: "ble/12:3b:6a:cc:cc:cc/advertisement/ff"
@@ -53,7 +119,7 @@ sensor:
       {% endif %}
 ```
 ### April Brother Smart BLE Accelerometer iBeacon Beacon Sensor
-```
+```yaml
 sensor:
 - platform: mqtt
     state_topic: "ble/12:3b:6a:dd:dd:dd/advertisement/ff"
@@ -65,4 +131,14 @@ sensor:
       {% else %}
       {{ states.sensor.blue_beacon.state }}
       {% endif %}
+```
+### Comet Blue BLE thermostat (using https://github.com/seidler2547/home-assistant-cc)
+```yaml
+climate:
+  - platform: sygonix
+    devices: 
+      Livingroom:
+        mac: livingroom
+        pin: 000000
+
 ```
